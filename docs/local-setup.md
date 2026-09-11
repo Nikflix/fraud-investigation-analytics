@@ -50,7 +50,7 @@ $env:FRAUD_DATABASE_PATH = "data/processed/paysim.duckdb"
 .\.venv\Scripts\python.exe -m streamlit run app/overview.py
 ```
 
-Change the ZIP path if you saved it elsewhere. Keep the quotes around paths with spaces. An extracted `.csv` works with the same command. The ZIP must contain exactly one CSV with the [PaySim headers](paysim.md).
+Change the ZIP path if you saved it elsewhere. If the file is named `archive (4)(1).zip`, use that exact filename in the command. Keep the quotes around paths with spaces. An extracted `.csv` works with the same command. The ZIP must contain exactly one CSV with the [PaySim headers](paysim.md).
 
 The import creates `data/processed/paysim.duckdb`, separate from the demo database. It copies the CSV to temporary storage, validates all records, then commits the complete snapshot. Allow disk space for the expanded CSV, staging data, and final database; the full import takes longer than the demo.
 

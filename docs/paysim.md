@@ -20,6 +20,35 @@ fraud-analytics profile-paysim --database data/processed/paysim.duckdb
 
 The fingerprint is for the uncompressed CSV, not the ZIP. Repacking identical CSV bytes produces the same identity. Changing line endings or row order produces a different identity.
 
+## Full-dataset verification
+
+On 2026-09-11, the reattached archive was imported and checked using code from
+[commit 2597697](https://github.com/Nikflix/fraud-investigation-analytics/commit/2597697063e72feee9bb8b19b89005a4062e4c48),
+with Python 3.12.14, DuckDB 1.5.5, and Streamlit 1.63.0. Its CSV fingerprint
+matches the source identity above.
+
+| Check | Observed result |
+| --- | --- |
+| Complete ZIP import | 6,362,620 records inserted. |
+| Profile reconciliation | All recorded totals, type subtotals, amount totals, step coverage, and account-coverage measures matched. |
+| Identical archive imported again | Zero records inserted; 6,362,620 records retained. |
+| Initial dashboard overview | 6,362,620 transactions, 8,213 fraud labels, 16 existing-rule flags, and 100 rows on the first page. |
+| Final dashboard page | Page 63,627 contains the final 20 records. |
+| Fraud-label filter | 8,213 records; changing the filter resets pagination to page 1. |
+| Fraud-label and TRANSFER filters | 4,097 records. |
+| Simulation hour 1 | 2,708 records. |
+| Exact account filter | Returned rows and count agree with an independent SQL query across both account roles. |
+| No transaction types selected | Zero records and a clear empty-state message. |
+
+Dashboard checks used Streamlit's AppTest against the full DuckDB file. They
+verify application execution, widget interactions, displayed values, and table
+contents. Browser layout, Windows execution, and concurrent-user behaviour were
+not tested in this run.
+
+The full dataset is an additional local integration check; GitHub Actions
+continues to use the small fictional fixtures. The archive and generated
+database are excluded from the repository.
+
 ## Input and field mapping
 
 The importer accepts UTF-8 CSV, with an optional byte-order mark, or a ZIP containing exactly one CSV. The header names and order must match:
