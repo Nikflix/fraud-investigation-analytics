@@ -1,6 +1,14 @@
 # Architecture notes
 
-The implemented workflow reads the sample CSV, validates every record, converts supported values to explicit types, and appends the complete batch to a local DuckDB table. The command records basic provenance and rejects duplicate transaction IDs across loads. Features, scoring, investigations, and the dashboard remain planned.
+The implemented workflow includes the original sample validator and loader, a bulk PaySim CSV/ZIP importer, shared read-only analytics queries, and a Streamlit transaction overview. Features, scoring, investigation cases, graph analysis, and LLM summaries remain planned.
+
+## Implemented data overview
+
+The PaySim importer hashes a temporary copy of the source CSV and validates all rows in DuckDB before committing a typed snapshot. Metadata records its fingerprint, source name, row count, and import time. The original sample uses the separate `transactions` table; PaySim uses `paysim_transactions` and preserves simulation steps.
+
+The CLI profile and Streamlit application share parameterized queries in `analytics/paysim.py`. The app caches aggregates and pages by database identity and filters. It retrieves at most 100 transaction rows per page, while the SQL queries scan the selected snapshot. Hour, type, label, and exact account filters apply consistently to metrics, charts, and the table.
+
+This is a local exploration view. It does not yet implement a review queue or store analyst decisions. Supplied fraud labels and existing-rule flags are displayed separately.
 
 ## Intended components
 

@@ -1,6 +1,6 @@
 # Sample transaction contract
 
-This is a provisional interface for the foundation milestone. A dataset-specific adapter will map the selected source into a reviewed contract. Do not invent timestamps, counterparties, balances, or fraud labels to fill gaps in a source dataset.
+This is the original nine-field sample interface from the foundation milestone. PaySim uses a separate [reviewed contract](paysim.md) and table because it has simulation hours and source-row positions instead of calendar timestamps and transaction IDs. Do not invent timestamps, counterparties, balances, or fraud labels to fill gaps in a source dataset.
 
 The CSV uses UTF-8, with a header and one transaction per record. A UTF-8 byte-order mark is accepted. Required headers must match exactly; optional headers may be omitted. Duplicate headers, unexpected headers, and records whose width differs from the header cause a file-level failure.
 
@@ -14,7 +14,7 @@ The CSV uses UTF-8, with a header and one transaction per record. A UTF-8 byte-o
 | `transaction_type` | Yes | Case-sensitive value listed in the configuration. |
 | `source_balance_before` | No | Finite nonnegative decimal value when supplied. Blank means unknown. |
 | `source_balance_after` | No | Finite nonnegative decimal value when supplied. Blank means unknown. |
-| `is_fraud` | No | `0` for a known negative label, `1` for a known positive label, or blank for unknown. All bundled sample labels are unknown. |
+| `is_fraud` | No | `0` for a known negative label, `1` for a known positive label, or blank for unknown. All labels in `data/sample/transactions.csv` are unknown. |
 
 The adapter trims surrounding whitespace from values and retains strings. Validation parses amounts with `Decimal`, avoiding binary floating-point comparisons. It checks timestamps without changing their offsets or values. The separate ingestion command applies the storage contract below.
 

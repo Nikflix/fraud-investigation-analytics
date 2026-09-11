@@ -1,97 +1,105 @@
-# Run the project on Windows
+# Open the application on Windows
 
-The project currently runs from a terminal. There is no fraud dashboard yet.
-DuckDB is installed as a Python dependency and stores transactions in a local
-file. A database server and MySQL Workbench are not required.
+The Streamlit dashboard opens in your browser and reads a DuckDB file on your computer. Python installs both tools as project dependencies. You do not need to open MySQL Workbench.
 
-## Get the code
+## 1. Get the code
 
-Install Python 3.12 or newer and Git if they are not already installed. Open
-PowerShell in the folder where you keep projects, then run:
+Install Python 3.12 or newer and Git if needed. Open PowerShell in the folder where you keep projects:
 
 ```powershell
 git clone https://github.com/Nikflix/fraud-investigation-analytics.git
 cd fraud-investigation-analytics
 ```
 
-If you already cloned the repository, open that folder and run `git pull`.
+If you already cloned the repository, open that project folder and run `git pull`.
 
-## Install the project
-
-```powershell
-python --version
-python -m venv .venv
-.\.venv\Scripts\python.exe -m pip install -e ".[dev]"
-```
-
-If Windows cannot find `python`, try `py` for the first two commands. Check that
-the reported version is at least 3.12. Calling the environment's Python directly
-means you do not need to activate it or change PowerShell execution policy.
-Installing the project also installs DuckDB.
-
-## Load the sample
+## 2. Install the project
 
 Run these commands from the repository root:
 
 ```powershell
-.\.venv\Scripts\python.exe -m fraud_analytics validate data/sample/transactions.csv
-.\.venv\Scripts\python.exe -m fraud_analytics ingest data/sample/transactions.csv
+python --version
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -e ".[dev,app]"
 ```
 
-The load should report `"inserted_rows": 6`. It creates
-`data/processed/fraud.duckdb` with one `transactions` table. This file is ignored
-by Git and stays on your computer.
+If Windows cannot find `python`, try `py` for the first two commands. Check that the reported version is at least 3.12. Calling the environment's Python directly avoids changing PowerShell execution policy.
 
-Loading the same sample into that file again returns exit code `1` because its
-transaction IDs already exist. The original six rows stay unchanged. To try a
-separate database, pass a different path:
+## 3. Open a small demo
 
 ```powershell
-.\.venv\Scripts\python.exe -m fraud_analytics ingest data/sample/transactions.csv --database data/processed/practice.duckdb
+.\.venv\Scripts\python.exe -m fraud_analytics ingest-paysim data/sample/paysim.csv --database data/processed/paysim-demo.duckdb
+$env:FRAUD_DATABASE_PATH = "data/processed/paysim-demo.duckdb"
+.\.venv\Scripts\python.exe -m streamlit run app/overview.py
 ```
 
-## See the data and run SQL
+Streamlit should open your browser. If it does not, open the **Local URL** printed in PowerShell, normally [http://localhost:8501](http://localhost:8501). That address works on your computer after the command starts. Keep PowerShell open; Ctrl+C stops the app.
 
-Start a Python session:
+The demo contains **six hand-written test records**, including three fraud labels and one existing-rule flag. It is for checking the interface and does not represent the full dataset.
+
+Use the sidebar and click **Apply filters**. Try account `C099` to see three appearances, or `C001` to see two. An empty transaction-type selection returns no matches.
+
+## 4. Load your full PaySim ZIP
+
+Stop the app with Ctrl+C. If your uploaded file is in Downloads, use:
+
+```powershell
+.\.venv\Scripts\python.exe -m fraud_analytics ingest-paysim "$env:USERPROFILE\Downloads\archive (4).zip"
+.\.venv\Scripts\python.exe -m fraud_analytics profile-paysim
+$env:FRAUD_DATABASE_PATH = "data/processed/paysim.duckdb"
+.\.venv\Scripts\python.exe -m streamlit run app/overview.py
+```
+
+Change the ZIP path if you saved it elsewhere. Keep the quotes around paths with spaces. An extracted `.csv` works with the same command. The ZIP must contain exactly one CSV with the [PaySim headers](paysim.md).
+
+The import creates `data/processed/paysim.duckdb`, separate from the demo database. It copies the CSV to temporary storage, validates all records, then commits the complete snapshot. Allow disk space for the expanded CSV, staging data, and final database; the full import takes longer than the demo.
+
+The recorded profile for the supplied dataset has **6,362,620 transactions**, **8,213 supplied fraud labels**, and **16 supplied existing-rule flags**. Your app reads the loaded file; it does not use hard-coded totals.
+
+Reimporting the identical CSV reports `"already_loaded": true` and inserts zero rows. A different CSV is refused in an occupied database. Choose another `--database` path and set `FRAUD_DATABASE_PATH` to that same path for a separate snapshot.
+
+## SQL and tests
+
+To query PaySim directly, start Python:
 
 ```powershell
 .\.venv\Scripts\python.exe
 ```
 
-At the `>>>` prompt, run:
+At the `>>>` prompt:
 
 ```python
 import duckdb
-from pathlib import Path
 
-con = duckdb.connect("data/processed/fraud.duckdb", read_only=True)
-con.execute("SET TimeZone = 'UTC'")
-con.sql("SELECT * FROM transactions ORDER BY timestamp").show()
-con.sql(Path("sql/transaction_summary.sql").read_text()).show()
-con.close()
+with duckdb.connect("data/processed/paysim.duckdb", read_only=True) as con:
+    con.sql("""
+        SELECT transaction_type, count(*) AS transactions,
+               count_if(is_fraud) AS fraud_labels, sum(amount) AS recorded_amount
+        FROM paysim_transactions
+        GROUP BY transaction_type
+        ORDER BY transaction_type
+    """).show()
 exit()
 ```
 
-The summary should show:
-
-| transaction_type | transaction_count | total_amount | unknown_labels | negative_labels | positive_labels |
-| --- | --- | --- | --- | --- | --- |
-| PAYMENT | 3 | 60.50 | 3 | 0 | 0 |
-| TRANSFER | 3 | 255.10 | 3 | 0 | 0 |
-
-These are fictional sample transactions. Unknown labels do not mean legitimate
-transactions. A browser dashboard using Streamlit is planned for a later stage.
-
-Close database connections before running another process that writes to the
-same file. If you see a file-lock error, exit the Python session and retry.
-
-## Run the tests
+Run tests from PowerShell:
 
 ```powershell
 .\.venv\Scripts\python.exe -m pytest
 ```
 
-Tests use temporary databases; they do not change your local sample database.
+Tests use temporary databases and small fixtures. They do not change your local dataset.
 
-See the [DuckDB Python documentation](https://duckdb.org/docs/current/clients/python/overview)
-for the database client and connection options.
+## If something does not open
+
+| Symptom | What to check |
+| --- | --- |
+| `No module named streamlit` or `fraud_analytics` | Rerun the installation command using the same `.venv` Python. |
+| The app asks you to load PaySim | Check the import succeeded and `FRAUD_DATABASE_PATH` points to that database. |
+| Only six transactions appear | The demo database is selected. Follow step 4 to switch to the full dataset. |
+| File not found | Check the quoted ZIP path, filename, and current project folder. |
+| Database file-lock error | Stop the app and close Python sessions using that file before importing. |
+| Another snapshot is already loaded | Use a new database path; the loader deliberately preserves the existing snapshot. |
+| Browser cannot connect | Keep the Streamlit command running and use the Local URL it prints. GitHub stores the code; it does not run this Python app. |
+
+See the [DuckDB Python documentation](https://duckdb.org/docs/current/clients/python/overview) and [Streamlit run documentation](https://docs.streamlit.io/develop/api-reference/cli/run) for the underlying tools.

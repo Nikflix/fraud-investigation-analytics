@@ -1,10 +1,10 @@
-# Initial implementation decisions
+# Implementation decisions
 
 ## Keep the first milestone small
 
-The dataset has not been selected. A thin CSV adapter and working validation boundary let us review the input contract before building features or committing to source-specific assumptions. There are no empty application, model, cloud, or agent modules.
+The foundation began before dataset selection. A thin CSV adapter and working validation boundary let us review the input contract before building features or committing to source-specific assumptions. PaySim is now selected, with a separate adapter and a documented contract.
 
-TOML is read with `tomllib`, amounts are checked with `Decimal`, and tests use `pytest`. DuckDB was added with the local ingestion command. Dataframe and ML packages will be introduced with the components that use them.
+TOML is read with `tomllib`, sample amounts are checked with `Decimal`, and tests use `pytest`. DuckDB was added with the local ingestion command. Streamlit, pandas, and Plotly are optional application dependencies introduced with the overview; ML packages remain deferred.
 
 ## Use DuckDB for the local analytical store
 
@@ -14,7 +14,23 @@ One `transactions` table is sufficient for the sample. The loader validates and 
 
 The provisional schema stores money as `DECIMAL(18, 2)`. Values that cannot be represented exactly are rejected before DuckDB can round them. Timestamp storage requires seconds, an explicit minute-based offset, and at most six fractional digits. Timestamps are normalized to UTC; the original timestamp string is also retained. These limits fit the sample and must be reviewed against the selected dataset.
 
-Input path, logical CSV record number, and ingestion time provide basic provenance. They are not a content-addressed audit trail. The source file itself is not copied or hashed. Parameterized inserts keep the implementation small, but a large dataset will need a bulk-loading path and measured performance.
+For the original sample loader, input path, logical CSV record number, and ingestion time provide basic provenance. Its source file is not copied or hashed. PaySim uses the separate snapshot loader described below.
+
+## Give PaySim its own snapshot contract
+
+PaySim does not supply calendar timestamps or transaction IDs. Its zero-amount records and scientific notation also differ from the initial sample assumptions. Mapping it into the sample contract would require invented values or drop valid records, so it uses a dedicated table and validator.
+
+The PaySim importer copies and hashes the same CSV bytes it scans. DuckDB stages the fields as text and validates exact decimal representability before bulk insertion. This preserves exponent notation without accepting silent rounding. The source-row ordinal and CSV fingerprint provide a reproducible record reference.
+
+One database contains one PaySim snapshot. Identical content is a successful no-op; another fingerprint is rejected rather than appended or overwritten. This suits a fixed exploratory dataset and keeps incremental-ingestion semantics out of this milestone. Metadata and row-count checks do not detect arbitrary manual database edits.
+
+The overview queries DuckDB directly with parameterized filters. It caches aggregates and bounded pages using database file metadata and keeps the full dataset out of pandas. Database writes should finish before opening the app. Multi-user state and concurrent writes will require a separate design.
+
+## Respect the measured data limits
+
+The [recorded PaySim profile](paysim.md) shows only 9,298 repeated source IDs among 6,353,307 distinct source IDs, with at most three source appearances each. The application therefore labels account searches as record appearances rather than inferred behavioural risk.
+
+Step values remain simulation hours. No calendar date or within-hour ordering is fabricated. Dataset labels and supplied existing-rule flags remain separate from any future predictions or analyst feedback. Balance fields need an availability and leakage review before feature engineering.
 
 ## Preserve ambiguous input for review
 
@@ -22,7 +38,7 @@ The adapter retains IDs and amounts as strings. Missing labels remain unknown. T
 
 ## Review the dataset before implementing history features
 
-The next milestone should answer:
+Dataset review and the next modelling milestone should address:
 
 1. Can the data be obtained and used under documented terms?
 2. Are account IDs stable, and do accounts have enough repeated activity for behavioral baselines?

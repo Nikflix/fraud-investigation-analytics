@@ -4,11 +4,14 @@ from dataclasses import asdict
 import json
 import logging
 from pathlib import Path
+import zipfile
 
 import duckdb
 
+from fraud_analytics.analytics.paysim import profile_dataset
 from fraud_analytics.config import load_config
 from fraud_analytics.ingestion.load_transactions import InvalidBatchError, load_transactions
+from fraud_analytics.ingestion.paysim import load_paysim
 from fraud_analytics.ingestion.sample_csv import read_sample_csv
 from fraud_analytics.ingestion.validate_input import ValidationReport, validate_transactions
 from fraud_analytics.logging import configure_logging
@@ -36,7 +39,34 @@ def main() -> int:
     ingest.add_argument("input", type=Path)
     ingest.add_argument("--config", type=Path, default=Path("configs/project.toml"))
     ingest.add_argument("--database", type=Path, default=Path("data/processed/fraud.duckdb"))
+    paysim = commands.add_parser("ingest-paysim", help="Load a PaySim CSV or ZIP into DuckDB")
+    paysim.add_argument("input", type=Path)
+    paysim.add_argument("--database", type=Path, default=Path("data/processed/paysim.duckdb"))
+    profile = commands.add_parser("profile-paysim", help="Summarize a loaded PaySim snapshot")
+    profile.add_argument("--database", type=Path, default=Path("data/processed/paysim.duckdb"))
     args = parser.parse_args()
+
+    if args.command == "profile-paysim":
+        configure_logging()
+        try:
+            print(json.dumps(profile_dataset(args.database), indent=2, default=str))
+        except (OSError, ValueError, duckdb.Error) as error:
+            logger.error("Cannot profile PaySim; check that its database is loaded: %s", error)
+            return 2
+        return 0
+
+    if args.command == "ingest-paysim":
+        configure_logging()
+        try:
+            result = load_paysim(args.input, args.database)
+        except (ValueError, csv.Error, zipfile.BadZipFile) as error:
+            logger.error("Cannot load PaySim: %s", error)
+            return 1
+        except (OSError, duckdb.Error) as error:
+            logger.error("PaySim import failed; check input, database path and file lock: %s", error)
+            return 2
+        print(json.dumps(asdict(result), indent=2))
+        return 0
 
     try:
         configure_logging()

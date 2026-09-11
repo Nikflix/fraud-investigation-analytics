@@ -1,120 +1,32 @@
 # Fraud Risk Analytics Platform
 
-A fraud investigation project built around transaction data, account behavior, and evidence an analyst can inspect. The intended workflow scores suspicious activity, gathers the relevant history, and generates a case summary from verified findings.
+Fraud investigation needs more than a transaction flag: an analyst needs the relevant activity, the reason it was flagged, and evidence they can inspect. This project is building that workflow in Python and SQL, starting with reproducible data ingestion and exploration.
 
-**Current status: validation and local ingestion.** The sample CSV adapter, validation command, and DuckDB loader are implemented. Dataset selection is the next milestone. Model training, investigations, the dashboard, and deployment are planned work.
+**Current status: PaySim ingestion and a local Streamlit transaction overview.** Model scoring, investigation cases, graph analysis, LLM summaries, and deployment are later milestones.
 
 ## What works today
 
-- Read a CSV through a small, documented dataset adapter.
-- Preserve account IDs, decimal amounts, and unknown labels as supplied.
-- Check required fields, duplicate transaction IDs, timestamp offsets, amounts, balances, labels, and transaction categories.
-- Reject unexpected columns and malformed CSV records instead of silently changing the input.
-- Produce a JSON validation report with record numbers and machine-readable issue codes.
-- Load validated batches into a persistent DuckDB `transactions` table.
-- Keep IDs as text, amounts as exact decimals, and unknown labels as SQL `NULL`.
-- Reject a whole load on invalid data or an existing transaction ID, preserving previously stored rows.
-- Record the input path, logical CSV record number, original timestamp, and ingestion time.
-- Run validation and ingestion tests locally or through the included GitHub Actions workflow.
+- Import a PaySim CSV or ZIP into a local DuckDB database in one transaction.
+- Check the complete input before storing it, retain exact decimal amounts, and preserve zero-amount records.
+- Record the CSV fingerprint, source name, row positions, and import time. Loading the same CSV again is a successful no-op.
+- Profile transaction types, supplied fraud labels, existing-rule flags, and account history coverage.
+- Explore simulation hours, transaction types, labels, and exact account IDs in Streamlit.
+- View volume charts and a paginated transaction table using the same SQL filters as the summary.
+- Continue using the original sample validation and ingestion commands.
 
-The six sample transactions are hand-written fictional records for checking the adapter. Their fraud labels are unknown. They are not a training dataset or evidence of detection performance.
+The overview displays supplied dataset labels. It does not generate fraud predictions.
 
-## Run locally
+## Architecture
 
-There is no visual application yet. Use the commands below to validate and store data, then query it through Python and SQL. For a walkthrough, see [Windows setup and viewing the data](docs/local-setup.md).
+The implemented path is a source-specific Python importer, a DuckDB snapshot, shared read-only SQL queries, and a Streamlit overview. Only aggregated results and one page of transactions are sent to the application.
 
-Use Python 3.12 or newer. Run these commands from the repository root:
-
-```bash
-python -m venv .venv
-```
-
-Activate the environment on macOS or Linux:
-
-```bash
-source .venv/bin/activate
-```
-
-On Windows PowerShell:
-
-```powershell
-.venv\Scripts\Activate.ps1
-```
-
-Install the project and run the sample:
-
-```bash
-python -m pip install -e ".[dev]"
-fraud-analytics validate data/sample/transactions.csv
-fraud-analytics ingest data/sample/transactions.csv
-python -m pytest
-```
-
-The sample validation report should be:
-
-```json
-{
-  "total_rows": 6,
-  "valid_rows": 6,
-  "invalid_rows": 0,
-  "issues": []
-}
-```
-
-Ingestion creates `data/processed/fraud.duckdb` and reports `"inserted_rows": 6`. DuckDB is installed with the project; no separate database server is needed. To choose another database file:
-
-```bash
-fraud-analytics ingest data/sample/transactions.csv --database data/processed/practice.duckdb
-```
-
-Loading the same transaction IDs again returns exit code `1`. It does not add duplicates or overwrite existing rows. Use a different database path for a separate copy of the sample.
-
-The module entry points are also available:
-
-```bash
-python -m fraud_analytics validate data/sample/transactions.csv
-python -m fraud_analytics ingest data/sample/transactions.csv
-```
-
-Logs go to stderr; the report goes to stdout. To validate another file or use a different configuration:
-
-```bash
-fraud-analytics validate path/to/transactions.csv --config configs/project.toml
-```
-
-| Exit code | Meaning |
-| --- | --- |
-| `0` | Validation passed, or the complete batch was loaded. |
-| `1` | Empty/invalid batch, unsupported storage precision, or a database constraint such as an existing ID. No batch rows are added. |
-| `2` | Invalid command, unreadable input/configuration, CSV schema/format error, or a database access/schema error. |
-
-Allowed transaction categories live in `configs/project.toml`. Set the optional `FRAUD_LOG_LEVEL` environment variable to change log verbosity. `.env.example` documents environment settings; this version does not automatically load `.env` files. No API key or cloud account is needed. Database paths are relative to your working directory unless you supply an absolute path.
-
-## Query the stored transactions
-
-After ingesting the sample, start Python in the project environment and run:
-
-```python
-from pathlib import Path
-import duckdb
-
-with duckdb.connect("data/processed/fraud.duckdb", read_only=True) as con:
-    con.execute("SET TimeZone = 'UTC'")
-    con.sql("SELECT * FROM transactions ORDER BY timestamp").show()
-    con.sql(Path("sql/transaction_summary.sql").read_text()).show()
-```
-
-The sample summary contains three payments totaling `60.50` and three transfers totaling `255.10`. All six labels remain unknown. Close the connection before another process writes to the database. See the [DuckDB Python documentation](https://duckdb.org/docs/current/clients/python/overview) for connection options.
-
-## Intended architecture
-
-This diagram describes the target workflow, including components that have not been built yet.
+The diagram below shows the broader target, including planned components:
 
 ```mermaid
 flowchart TD
     A["Batch transactions"] --> B["Ingestion and validation"]
-    B --> C["Analytical store"]
-    C --> D["Behavioral features"]
+    B --> C["DuckDB"]
+    C --> D["Historical features"]
     D --> E["Rules and model scoring"]
     C --> F["Account and relationship history"]
     E --> G["Structured case evidence"]
@@ -126,52 +38,117 @@ flowchart TD
     J --> K["Offline evaluation"]
 ```
 
-Python, SQL, and models will determine the evidence. The LLM will explain that evidence. Analyst decisions and feedback will be stored separately from dataset labels.
+See the [architecture notes](docs/architecture.md) for implementation boundaries.
 
-The [architecture notes](docs/architecture.md) explain the intended components and the differences from the original reference diagram.
+## Demo
+
+The application runs in a browser on your computer. Follow the [Windows setup guide](docs/local-setup.md) to install it, open the six-row demo, and then load your full ZIP. There is no hosted application URL yet.
+
+The sidebar filters simulation hour, transaction type, dataset label, and exact account ID. Click **Apply filters** to update the totals, charts, and table. Searching an account includes its appearances in either source or destination fields.
+
+## Data
+
+[PaySim](https://www.kaggle.com/datasets/ealaxi/paysim1) is the selected synthetic transaction dataset. The profile recorded from the uploaded CSV on 2026-09-11 contains:
+
+| Measure | Value |
+| --- | ---: |
+| Transactions | 6,362,620 |
+| Simulation hours | 1–743 |
+| Supplied fraud labels | 8,213 |
+| Fraud-label prevalence | 0.129082% |
+| Supplied existing-rule flags | 16 |
+| Zero-amount records | 16 |
+| Distinct source account IDs | 6,353,307 |
+| Source IDs appearing more than once | 9,298 |
+
+These are dataset observations, not detection results. The [PaySim contract and profile](docs/paysim.md) explain the field mapping, source fingerprint, and limitations. Run `fraud-analytics profile-paysim` to measure your own loaded snapshot.
+
+Both files under `data/sample/` are hand-written fictional fixtures. `transactions.csv` tests the original nine-field contract and has unknown labels. `paysim.csv` tests the eleven-field PaySim adapter, including labelled records and scientific notation. Neither fixture represents the full dataset's class distribution.
+
+Raw datasets and DuckDB files stay outside Git. The repository does not redistribute the uploaded archive; obtain it from its source and review the source's current usage terms.
+
+## Features, detection, and investigations
+
+These components are planned. PaySim's hour resolution does not support minute-level velocity features or an assumed ordering of events within an hour. Almost all source account IDs appear once, so long sender-history baselines would be poorly supported by this snapshot.
+
+The next step is a leakage review and a documented chronological split before training a logistic regression baseline. Balance fields, supplied flags, and labels need explicit availability assumptions. Fit preprocessing on training data, choose thresholds on validation data, and leave the test period untouched.
+
+Account and graph evidence must use only the history available at scoring time. A later LLM component will explain structured evidence; it will not calculate features or invent probabilities. Analyst review feedback will be stored separately from the supplied labels.
+
+No model has been trained. Precision, recall, PR-AUC, review-volume metrics, and summary-grounding evaluation remain unmeasured.
+
+## Engineering decisions
+
+- DuckDB runs inside Python and stores data in a local file; no separate database server is required.
+- PaySim has its own table because it lacks a calendar timestamp and transaction ID. The adapter does not invent either.
+- The loader hashes and reads the same temporary CSV snapshot, then validates and inserts using DuckDB's bulk execution.
+- Each database contains one PaySim snapshot. A different CSV requires a new database path; existing data is not replaced.
+- Amounts and balances use `DECIMAL(18, 2)`. Scientific notation is accepted only when the value fits exactly, without rounding.
+- The app uses parameterized queries and bounded page results. Caches are keyed by database path, modification time, file size, and filters.
+
+See [implementation decisions](docs/decisions.md) for tradeoffs and remaining questions.
+
+## Run locally
+
+Use Python 3.12 or newer and run commands from the repository root. For Windows commands that do not require environment activation, use the [setup guide](docs/local-setup.md).
+
+On macOS or Linux:
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install -e ".[dev,app]"
+fraud-analytics ingest-paysim data/sample/paysim.csv --database data/processed/paysim-demo.duckdb
+FRAUD_DATABASE_PATH=data/processed/paysim-demo.duckdb python -m streamlit run app/overview.py
+```
+
+For the full dataset, stop Streamlit with Ctrl+C, import your ZIP, and start with the default database:
+
+```bash
+fraud-analytics ingest-paysim "path/to/archive.zip"
+fraud-analytics profile-paysim
+python -m streamlit run app/overview.py
+```
+
+The full import defaults to `data/processed/paysim.duckdb`. A ZIP must contain exactly one CSV. Leave space for the expanded CSV, staging data, and database. Close other database connections before importing.
+
+The original sample workflow remains available:
+
+```bash
+fraud-analytics validate data/sample/transactions.csv
+fraud-analytics ingest data/sample/transactions.csv
+python -m pytest
+```
+
+It writes `data/processed/fraud.duckdb` using the separate [sample contract](docs/data-dictionary.md). Its rerun policy rejects existing transaction IDs, while PaySim reruns use the CSV fingerprint.
+
+All commands also work as `python -m fraud_analytics <command>`. JSON reports go to stdout and logs to stderr. No API key is required. Optional shell settings are documented in `.env.example`; `.env` files are not loaded automatically.
+
+| PaySim exit code | Meaning |
+| --- | --- |
+| `0` | Complete import, identical snapshot already loaded, or successful profile. |
+| `1` | Invalid dataset contract, unsupported values, ambiguous ZIP, or a conflicting snapshot. |
+| `2` | Command, file access, CSV parser, or database error. |
 
 ## Project layout
 
 | Path | Purpose |
 | --- | --- |
-| `src/fraud_analytics/ingestion/` | Sample adapter, validation, and transactional DuckDB loading. |
-| `src/fraud_analytics/cli.py` | Validation and ingestion commands. |
-| `src/fraud_analytics/config.py` | TOML configuration loading. |
-| `src/fraud_analytics/logging.py` | Shared logging setup. |
-| `configs/project.toml` | Provisional sample validation settings. |
-| `data/sample/transactions.csv` | Six fictional, unlabeled transactions. |
-| `sql/transaction_summary.sql` | Transaction totals and label coverage by transaction type. |
-| `tests/` | Validation, typed storage, precision, rollback, and command checks. |
-| `docs/` | Data contract, architecture, and implementation decisions. |
-| `.github/workflows/test.yml` | Installation, tests, sample validation, and sample ingestion. |
+| `app/overview.py` | Streamlit transaction overview. |
+| `src/fraud_analytics/ingestion/` | Original sample adapter and PaySim bulk loader. |
+| `src/fraud_analytics/analytics/` | Shared read-only queries and profiling. |
+| `src/fraud_analytics/sql/` | Packaged PaySim schema and decimal validation. |
+| `src/fraud_analytics/cli.py` | Validation, ingestion, and profiling commands. |
+| `configs/project.toml` | Original sample validation settings. |
+| `data/sample/` | Small fictional fixtures for both contracts. |
+| `sql/transaction_summary.sql` | SQL example for the original sample. |
+| `tests/` | Validation, storage, rollback, query, and Streamlit interaction tests. |
+| `docs/` | Setup, contracts, recorded dataset profile, and design decisions. |
 
-The runtime dependencies are DuckDB and `pytz` for its timezone-aware Python results; `pytest` is a development dependency. pandas, scikit-learn, XGBoost, NetworkX, and Streamlit will be added when their respective components are implemented.
+The optional `app` dependencies are Streamlit, pandas, and Plotly. CI installs the app and test dependencies, runs the tests, and checks both sample command workflows.
 
-## Development plan
+## Limits and next steps
 
-| Milestone | Scope | Status |
-| --- | --- | --- |
-| Foundation | Packaging, adapter, validation, configuration, first test | Implemented |
-| Local ingestion | Persist validated sample batches in DuckDB; prevent duplicate IDs and partial loads | Implemented |
-| Dataset selection | Select a source, document its limitations, review storage types, and add field mapping | Next |
-| Features and detection | Historical features, transparent rules, logistic regression baseline, time-based evaluation | Planned |
-| Investigation | Account history, related transactions, graph evidence, structured case records | Planned |
-| Case summaries | LLM integration, evidence references, numeric consistency checks | Planned |
-| Analyst application | Streamlit queue, case view, review status, monitoring | Planned |
-| Deployment | Docker, persistence, AWS setup, scheduled processing | Planned |
+This is a local, single-user exploration app. It has no case queue, trained model, LLM integration, authentication, review persistence, or deployment. The PaySim loader supports one complete snapshot, not incremental updates, schema migrations, or row-level quarantine. Manually editing the database can invalidate its provenance; matching row counts do not detect arbitrary manual value changes.
 
-## Data and evaluation
-
-The [sample data contract](docs/data-dictionary.md) defines each field and its current validation rules. Those rules must be reviewed against the selected dataset; the sample contract does not establish how real bank transactions behave.
-
-Dataset selection will consider account history coverage, timestamp resolution, counterparties, label meaning, and usage terms. Feature windows must use only information available when a transaction is scored. Evaluation will use chronological splits, keep the final test period untouched, and report precision, recall, PR-AUC, and recall at a chosen review volume.
-
-No model has been trained, and no detection or business-impact metrics have been measured.
-
-## Current limits
-
-The reader and loader hold a small batch in memory and use parameterized inserts. This is not a bulk-loading implementation for a large dataset. Invalid batches are rejected; quarantine files, upserts, file-hash tracking, migrations, balance reconciliation, features, and scoring are not implemented.
-
-The provisional table uses `DECIMAL(18, 2)` and microsecond timestamps. Ingestion rejects values that would lose precision. The broader `validate` command checks the source contract, so a passing validation report alone does not guarantee a file fits these storage types. Review the [data dictionary](docs/data-dictionary.md) before adapting a dataset.
-
-See [implementation decisions](docs/decisions.md) for the reasons behind the initial scope and the next dataset checks.
+Next: document label availability and chronological evaluation boundaries, implement an initial feature set supported by the data, and compare a transparent rule baseline with logistic regression.

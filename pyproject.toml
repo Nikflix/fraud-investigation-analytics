@@ -15,12 +15,16 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=8,<10"]
+app = ["streamlit>=1.55,<2", "pandas>=2.2,<4", "plotly>=6,<7"]
 
 [project.scripts]
 fraud-analytics = "fraud_analytics.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+fraud_analytics = ["sql/*.sql"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
