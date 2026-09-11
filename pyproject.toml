@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=75,<85"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "fraud-investigation-analytics"
+version = "0.1.0"
+description = "Transaction data validation and foundations for fraud investigation analytics."
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = []
+
+[project.optional-dependencies]
+dev = ["pytest>=8,<10"]
+
+[project.scripts]
+fraud-analytics = "fraud_analytics.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

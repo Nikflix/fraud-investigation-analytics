@@ -1,0 +1,3 @@
+# These categories apply to the fictional sample. Review them for the real dataset.
+[validation]
+allowed_transaction_types = ["TRANSFER", "PAYMENT", "CASH_IN", "CASH_OUT"]
