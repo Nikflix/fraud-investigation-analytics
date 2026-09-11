@@ -4,7 +4,17 @@
 
 The dataset has not been selected. A thin CSV adapter and working validation boundary let us review the input contract before building features or committing to source-specific assumptions. There are no empty application, model, cloud, or agent modules.
 
-The runtime currently uses the standard library. TOML is read with `tomllib`, amounts are checked with `Decimal`, and the first test uses `pytest`. Dataframe libraries, databases, and ML packages will be introduced with the components that use them.
+TOML is read with `tomllib`, amounts are checked with `Decimal`, and tests use `pytest`. DuckDB was added with the local ingestion command. Dataframe and ML packages will be introduced with the components that use them.
+
+## Use DuckDB for the local analytical store
+
+DuckDB runs inside Python and persists data to a file. It supports SQL without a separate server, making it suitable for this project's local batch workflow. The supported dependency range is `duckdb>=1.5,<2`; this is a compatibility range, not a locked environment. `pytz` is included because DuckDB requires it to return timezone-aware Python datetimes.
+
+One `transactions` table is sufficient for the sample. The loader validates and converts the complete batch before opening the database, then creates the table and inserts rows in one transaction. A primary key rejects transaction IDs already present in the store. The whole batch rolls back on a database error, including new rows inserted before a duplicate was encountered. A rerun fails clearly; it does not silently skip or replace records.
+
+The provisional schema stores money as `DECIMAL(18, 2)`. Values that cannot be represented exactly are rejected before DuckDB can round them. Timestamp storage requires seconds, an explicit minute-based offset, and at most six fractional digits. Timestamps are normalized to UTC; the original timestamp string is also retained. These limits fit the sample and must be reviewed against the selected dataset.
+
+Input path, logical CSV record number, and ingestion time provide basic provenance. They are not a content-addressed audit trail. The source file itself is not copied or hashed. Parameterized inserts keep the implementation small, but a large dataset will need a bulk-loading path and measured performance.
 
 ## Preserve ambiguous input for review
 

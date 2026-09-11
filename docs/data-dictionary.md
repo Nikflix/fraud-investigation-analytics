@@ -16,7 +16,7 @@ The CSV uses UTF-8, with a header and one transaction per record. A UTF-8 byte-o
 | `source_balance_after` | No | Finite nonnegative decimal value when supplied. Blank means unknown. |
 | `is_fraud` | No | `0` for a known negative label, `1` for a known positive label, or blank for unknown. All bundled sample labels are unknown. |
 
-The adapter trims surrounding whitespace from values and retains strings. Validation parses amounts with `Decimal`, avoiding binary floating-point comparisons. It checks timestamps without changing their offsets or values. UTC normalization and typed storage belong to the next ingestion milestone.
+The adapter trims surrounding whitespace from values and retains strings. Validation parses amounts with `Decimal`, avoiding binary floating-point comparisons. It checks timestamps without changing their offsets or values. The separate ingestion command applies the storage contract below.
 
 The sample represents one unspecified currency. It is not safe to combine amounts across currencies without adding a currency field and a documented conversion policy. Current checks do not enforce a decimal scale or an upper amount limit.
 
@@ -39,4 +39,42 @@ Record numbering includes the header, so the first data record is `2`. Record nu
 | `invalid_balance` | A supplied balance is not a finite, nonnegative decimal value. |
 | `invalid_label` | A supplied label is not `0` or `1`. |
 
-Validation does not mutate or discard records. A caller must decide how to quarantine invalid input before persisting it. No record is scored or classified by this command.
+Validation does not mutate or discard records. The ingestion command rejects the whole batch when validation fails; it does not create a quarantine file. No record is scored or classified by either command.
+
+## DuckDB storage contract
+
+`fraud-analytics ingest` creates a `transactions` table in the selected local
+database. It appends a batch only when every record is valid and fits the storage
+types. An ID already present in this table rejects the entire batch, even if its
+values are identical. Existing records are never overwritten by ingestion.
+
+| Column | DuckDB type | Storage behavior |
+| --- | --- | --- |
+| `transaction_id` | `VARCHAR PRIMARY KEY` | Unique across all loaded batches. |
+| `timestamp` | `TIMESTAMPTZ NOT NULL` | UTC instant with microsecond precision. |
+| `source_account`, `destination_account` | `VARCHAR NOT NULL` | Leading zeroes remain intact. |
+| `amount` | `DECIMAL(18, 2) NOT NULL` | Positive, exact decimal; no rounding. |
+| `transaction_type` | `VARCHAR NOT NULL` | Validated against the supplied configuration. |
+| `source_balance_before`, `source_balance_after` | `DECIMAL(18, 2)` | Nonnegative when present; blank or absent becomes `NULL`. |
+| `is_fraud` | `BOOLEAN` | `0` becomes `FALSE`, `1` becomes `TRUE`, blank or absent becomes `NULL`. |
+| `source_timestamp` | `VARCHAR NOT NULL` | Original timestamp string after adapter whitespace trimming. |
+| `source_file` | `VARCHAR NOT NULL` | Input path supplied to the command; not a file hash. |
+| `source_row_number` | `BIGINT NOT NULL` | Logical CSV record number, including the header. |
+| `ingested_at` | `TIMESTAMPTZ NOT NULL` | Database transaction time for the load. |
+
+Money must fit within 16 integer digits and two fractional digits. Additional
+trailing fractional zeroes are accepted if the numeric value stays exact. A value
+such as `1.001` or `10000000000000000` rejects the batch before database creation.
+These are provisional storage limits; the source validator alone does not enforce
+them.
+
+Storage accepts `YYYY-MM-DDTHH:MM:SS` (a space may replace `T`), optional one to
+six fractional second digits, and `Z` or a `+/-HH:MM` offset. Higher precision and
+other formats accepted by Python's source validator are rejected for storage.
+The UTC value must fit Python's datetime range. DuckDB displays `TIMESTAMPTZ`
+values in the connection's timezone; the project examples set that timezone to
+UTC explicitly. The original offset is retained in `source_timestamp`.
+
+Database [decimal types](https://duckdb.org/docs/current/sql/data_types/numeric)
+and [timestamp types](https://duckdb.org/docs/current/sql/data_types/timestamp)
+determine these representation choices. Review both when adapting a real dataset.

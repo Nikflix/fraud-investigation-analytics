@@ -1,6 +1,6 @@
 # Architecture notes
 
-The first milestone establishes the input boundary: a sample adapter, a validation report, configuration, and an executable command. Everything after this boundary remains planned.
+The implemented workflow reads the sample CSV, validates every record, converts supported values to explicit types, and appends the complete batch to a local DuckDB table. The command records basic provenance and rejects duplicate transaction IDs across loads. Features, scoring, investigations, and the dashboard remain planned.
 
 ## Intended components
 

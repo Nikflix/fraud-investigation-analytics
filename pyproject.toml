@@ -5,10 +5,13 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "fraud-investigation-analytics"
 version = "0.1.0"
-description = "Transaction data validation and foundations for fraud investigation analytics."
+description = "Transaction validation and local ingestion for fraud investigation analytics."
 readme = "README.md"
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "duckdb>=1.5,<2",
+    "pytz>=2025.2",  # DuckDB uses this when returning timezone-aware datetimes.
+]
 
 [project.optional-dependencies]
 dev = ["pytest>=8,<10"]
