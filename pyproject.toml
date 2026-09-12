@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "fraud-investigation-analytics"
-version = "0.1.0"
-description = "Transaction validation and local ingestion for fraud investigation analytics."
+version = "0.2.0"
+description = "Local transaction scoring and review for fraud investigation analytics."
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
@@ -15,7 +15,8 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=8,<10"]
-app = ["streamlit>=1.55,<2", "pandas>=2.2,<4", "plotly>=6,<7"]
+analysis = ["numpy>=1.26,<3", "pandas>=2.2,<4", "scikit-learn>=1.7,<2"]
+app = ["streamlit>=1.55,<2", "pandas>=2.2,<4", "plotly>=6,<7", "numpy>=1.26,<3", "scikit-learn>=1.7,<2"]
 
 [project.scripts]
 fraud-analytics = "fraud_analytics.cli:main"

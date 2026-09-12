@@ -1,6 +1,7 @@
 """Run from the repository root: python -m streamlit run app/overview.py."""
 
 from decimal import Decimal
+import hashlib
 import math
 import os
 from pathlib import Path
@@ -15,6 +16,7 @@ from fraud_analytics.analytics.paysim import (
     transaction_page, transaction_summary, type_summary,
 )
 from fraud_analytics.ingestion.paysim import TRANSACTION_TYPES
+from fraud_analytics.ui.review import render_review_queue, render_try_transaction
 
 
 st.set_page_config(page_title="Fraud Risk Analytics", page_icon="🔎", layout="wide")
@@ -56,10 +58,35 @@ def style_chart(figure):
     return figure
 
 
+def choose_database():
+    configured = Path(os.environ.get("FRAUD_DATABASE_PATH", "data/processed/paysim.duckdb")).resolve()
+    options = [configured]
+    labels = {configured: configured.stem}
+    candidates = sorted(set(Path("data/processed").resolve().glob("*.duckdb")) | {configured})
+    for candidate in candidates:
+        if not candidate.is_file():
+            continue
+        try:
+            with duckdb.connect(str(candidate), read_only=True) as connection:
+                row = connection.execute("SELECT row_count FROM paysim_dataset").fetchone()
+            if row:
+                labels[candidate] = f"{candidate.stem} · {row[0]:,} records"
+                if candidate not in options:
+                    options.append(candidate)
+        except (OSError, duckdb.Error):
+            continue
+    selected = st.sidebar.selectbox("Dataset", options, format_func=lambda path: labels.get(path, path.stem))
+    if st.session_state.get("active_dataset") != str(selected):
+        st.session_state["active_dataset"] = str(selected)
+        for key in ("transaction_page", "queue_page", "queue_filter_signature", "whatif_result", "review_notice"):
+            st.session_state.pop(key, None)
+    return selected
+
+
 def main():
     st.title("Fraud Risk Analytics")
-    st.caption("PaySim · Synthetic transactions · Supplied dataset labels")
-    database = Path(os.environ.get("FRAUD_DATABASE_PATH", "data/processed/paysim.duckdb")).resolve()
+    st.caption("PaySim · Local scoring and transaction review")
+    database = choose_database()
     if not database.is_file():
         st.info("Load a PaySim CSV or ZIP to open the transaction overview.")
         st.code('fraud-analytics ingest-paysim "path/to/archive.zip"', language="bash")
@@ -77,6 +104,24 @@ def main():
         st.error("Cannot read the PaySim database. Check the path and finish any running import.")
         return
 
+    fixture = Path(__file__).resolve().parents[1] / "data/sample/paysim.csv"
+    if fixture.is_file() and info["sha256"] == hashlib.sha256(fixture.read_bytes()).hexdigest():
+        st.warning("Demo dataset: six hand-written records. Select the full PaySim database in the sidebar to build a review queue.")
+    st.sidebar.caption(f"Simulation hours {info['first_step']}–{info['last_step']}")
+    workspace = st.sidebar.radio("Workspace", ("Review queue", "Try a transaction", "Data overview"))
+    try:
+        if workspace == "Review queue":
+            render_review_queue(database, info)
+        elif workspace == "Try a transaction":
+            render_try_transaction(database, info)
+        else:
+            render_overview(database, version, info, coverage)
+    except (ValueError, OSError, duckdb.Error) as error:
+        st.error(f"Could not open this view: {error}")
+
+
+def render_overview(database, version, info, coverage):
+    st.caption("Data overview · Supplied dataset labels")
     with st.sidebar:
         st.header("Explore transactions")
         st.caption(
@@ -129,7 +174,7 @@ def main():
     rate = summary["fraud_rate"]
     st.caption(
         (f"{rate:.3%} of selected records carry a fraud label. " if rate is not None else "")
-        + "Amounts use unspecified dataset units. No model predictions have been generated."
+        + "Amounts use unspecified dataset units. Model scores are shown separately in the review queue."
     )
     if not summary["transactions"]:
         st.info("No transactions match these filters. Select a transaction type or widen the search.")
@@ -191,8 +236,8 @@ def main():
             "or a reliable behavioural baseline."
         )
         st.write(
-            "Zero-amount transactions are retained. Balance fields and existing-rule flags need "
-            "a leakage review before model training. Source and destination preserve the dataset "
+            "Zero-amount transactions are retained. Scoring uses the documented pre-transaction inputs. "
+            "Source and destination preserve the dataset "
             "roles and do not imply the direction of funds for every transaction type."
         )
         st.write(

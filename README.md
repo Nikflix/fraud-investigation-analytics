@@ -1,8 +1,8 @@
 # Fraud Risk Analytics Platform
 
-Fraud investigation needs more than a transaction flag: an analyst needs the relevant activity, the reason it was flagged, and evidence they can inspect. This project is building that workflow in Python and SQL, starting with reproducible data ingestion and exploration.
+Fraud investigation needs more than a transaction flag: an analyst needs the relevant activity, the reason it was flagged, and evidence they can inspect. This project implements a local workflow in Python, DuckDB, and Streamlit: load transactions, train a baseline, inspect alerts, and save reviews.
 
-**Current status: PaySim ingestion and a local Streamlit transaction overview.** Model scoring, investigation cases, graph analysis, LLM summaries, and deployment are later milestones.
+**Current status: baseline scoring and persistent transaction review, version 0.2.0.** The app also scores newly entered transaction details. Graph investigation, LLM summaries, live ingestion, and deployment remain later milestones.
 
 ## What works today
 
@@ -10,15 +10,20 @@ Fraud investigation needs more than a transaction flag: an analyst needs the rel
 - Check the complete input before storing it, retain exact decimal amounts, and preserve zero-amount records.
 - Record the CSV fingerprint, source name, row positions, and import time. Loading the same CSV again is a successful no-op.
 - Profile transaction types, supplied fraud labels, existing-rule flags, and account history coverage.
+- Fit logistic regression on earlier simulation hours, choose a review threshold on a separate validation period, and score the later test period.
+- Compare model alerts with two transparent rules, with measured precision, recall, and review volume.
+- Inspect a ranked queue, model factors, rule reasons, and earlier activity involving either account.
+- Save a review status and note, with a timestamped history that survives reopening the app.
+- Enter a new transaction type, amount, and source balance to calculate a fresh score and rule checks.
 - Explore simulation hours, transaction types, labels, and exact account IDs in Streamlit.
 - View volume charts and a paginated transaction table using the same SQL filters as the summary.
 - Continue using the original sample validation and ingestion commands.
 
-The overview displays supplied dataset labels. It does not generate fraud predictions.
+The **Data overview** displays supplied labels; the **Review queue** displays this project's model and rule results. Labels, the source's existing flags, and analyst notes remain separate.
 
 ## Architecture
 
-The implemented path is a source-specific Python importer, a DuckDB snapshot, shared read-only SQL queries, and a Streamlit overview. Only aggregated results and one page of transactions are sent to the application.
+The implemented path is a source-specific importer, a DuckDB snapshot, a chronological scoring pipeline, and a Streamlit review interface. The app retrieves aggregates and bounded pages; training materializes each period's model inputs in memory.
 
 The diagram below shows the broader target, including planned components:
 
@@ -42,9 +47,16 @@ See the [architecture notes](docs/architecture.md) for implementation boundaries
 
 ## Demo
 
-The application runs in a browser on your computer. Follow the [Windows setup guide](docs/local-setup.md) to install it, open the six-row demo, and then load your full ZIP. There is no hosted application URL yet.
+The application runs in a browser on your computer. Follow the [Windows setup guide](docs/local-setup.md) to update or install it and load your full ZIP. There is no hosted application URL yet.
 
-The sidebar filters simulation hour, transaction type, dataset label, and exact account ID. Click **Apply filters** to update the totals, charts, and table. Searching an account includes its appearances in either source or destination fields.
+Select the full database in **Dataset**, then:
+
+1. Open **Review queue** and click **Build review queue**. The first run trains and saves the baseline locally.
+2. Select an alert, inspect its evidence, and **Save review** as New, In review, or Closed.
+3. Open **Try a transaction**, change the inputs, and click **Score transaction** for a new result.
+4. Use **Data overview** for the original charts and filters.
+
+If the app shows **six records**, it is using the fictional demo. The app identifies that fixture and disables training; load or select the full PaySim database first. For the uploaded CSV, the selector should show **6,362,620 records**.
 
 ## Data
 
@@ -69,13 +81,20 @@ Raw datasets and DuckDB files stay outside Git. The repository does not redistri
 
 ## Features, detection, and investigations
 
-These components are planned. PaySim's hour resolution does not support minute-level velocity features or an assumed ordering of events within an hour. Almost all source account IDs appear once, so long sender-history baselines would be poorly supported by this snapshot.
+The baseline uses transaction type, amount, and the source balance before the transaction. Labels, supplied flags, IDs, simulation hour, destination balances, and post-transaction balances are excluded from model inputs. Historical labels are used to fit and evaluate the model.
 
-The next step is a leakage review and a documented chronological split before training a logistic regression baseline. Balance fields, supplied flags, and labels need explicit availability assumptions. Fit preprocessing on training data, choose thresholds on validation data, and leave the test period untouched.
+Training uses hours 1–323; validation uses 324–378; testing uses 379–743. Whole hours remain together. A validation score threshold targets at most 1% of validation transactions, without consulting test labels. The saved queue contains only the **918,617 test-period transactions**.
 
-Account and graph evidence must use only the history available at scoring time. A later LLM component will explain structured evidence; it will not calculate features or invent probabilities. Analyst review feedback will be stored separately from the supplied labels.
+Measured on the uploaded PaySim snapshot:
 
-No model has been trained. Precision, recall, PR-AUC, review-volume metrics, and summary-grounding evaluation remain unmeasured.
+| Test-period method | Alerts | Precision | Recall | False-positive rate |
+| --- | ---: | ---: | ---: | ---: |
+| Logistic regression | 11,316 | 23.25% | 65.68% | 0.95% |
+| Either of the two rules | 182,750 | 2.18% | 99.65% | 19.54% |
+
+Model average precision is **0.5292**. The model produces 8,685 false alerts and misses 1,375 supplied fraud labels. These are initial synthetic-data results, not production performance or calibrated probabilities. See the [model card](docs/model-card.md) for input assumptions, validation results, prevalence changes, and reproduction details.
+
+Case evidence includes up to 20 earlier records involving either account. Same-hour and future activity are excluded. Sparse source history prevents a rich sender baseline; graph features and an evidence-grounded LLM summary are future work.
 
 ## Engineering decisions
 
@@ -85,6 +104,8 @@ No model has been trained. Precision, recall, PR-AUC, review-volume metrics, and
 - Each database contains one PaySim snapshot. A different CSV requires a new database path; existing data is not replaced.
 - Amounts and balances use `DECIMAL(18, 2)`. Scientific notation is accepted only when the value fits exactly, without rounding.
 - The app uses parameterized queries and bounded page results. Caches are keyed by database path, modification time, file size, and filters.
+- Scaler parameters, model weights, configuration, evaluation, and test scores are saved in DuckDB. Repeating the same analysis reuses them and preserves reviews.
+- Two outgoing-transaction rules check a large amount and a high share of the source balance. Rule comparisons use integer cents.
 
 See [implementation decisions](docs/decisions.md) for tradeoffs and remaining questions.
 
@@ -107,10 +128,11 @@ For the full dataset, stop Streamlit with Ctrl+C, import your ZIP, and start wit
 ```bash
 fraud-analytics ingest-paysim "path/to/archive.zip"
 fraud-analytics profile-paysim
+fraud-analytics analyze-paysim --config configs/detection.toml
 python -m streamlit run app/overview.py
 ```
 
-The full import defaults to `data/processed/paysim.duckdb`. A ZIP must contain exactly one CSV. Leave space for the expanded CSV, staging data, and database. Close other database connections before importing.
+The full import defaults to `data/processed/paysim.duckdb`. A ZIP must contain exactly one CSV. Leave space for the expanded CSV, staging data, and database. Close other database connections before importing or running CLI analysis. You can skip the CLI analysis command and use **Build review queue** in the app instead.
 
 The original sample workflow remains available:
 
@@ -126,29 +148,32 @@ All commands also work as `python -m fraud_analytics <command>`. JSON reports go
 
 | PaySim exit code | Meaning |
 | --- | --- |
-| `0` | Complete import, identical snapshot already loaded, or successful profile. |
-| `1` | Invalid dataset contract, unsupported values, ambiguous ZIP, or a conflicting snapshot. |
+| `0` | Successful import, profile, analysis, or reuse of an identical snapshot/analysis. |
+| `1` | Invalid data or analysis configuration, unsupported values, ambiguous ZIP, or a conflicting snapshot. |
 | `2` | Command, file access, CSV parser, or database error. |
 
 ## Project layout
 
 | Path | Purpose |
 | --- | --- |
-| `app/overview.py` | Streamlit transaction overview. |
+| `app/overview.py` | Streamlit entry point, dataset selection, and data overview. |
 | `src/fraud_analytics/ingestion/` | Original sample adapter and PaySim bulk loader. |
 | `src/fraud_analytics/analytics/` | Shared read-only queries and profiling. |
-| `src/fraud_analytics/sql/` | Packaged PaySim schema and decimal validation. |
-| `src/fraud_analytics/cli.py` | Validation, ingestion, and profiling commands. |
+| `src/fraud_analytics/detection/` | Features, training, evaluation, scores, and review persistence. |
+| `src/fraud_analytics/ui/` | Review queue, case evidence, and new-transaction form. |
+| `src/fraud_analytics/sql/` | Packaged data, scoring, and review schemas. |
+| `src/fraud_analytics/cli.py` | Validation, ingestion, profiling, and analysis commands. |
 | `configs/project.toml` | Original sample validation settings. |
+| `configs/detection.toml` | Chronological split, review capacity, and rule settings. |
 | `data/sample/` | Small fictional fixtures for both contracts. |
 | `sql/transaction_summary.sql` | SQL example for the original sample. |
 | `tests/` | Validation, storage, rollback, query, and Streamlit interaction tests. |
 | `docs/` | Setup, contracts, recorded dataset profile, and design decisions. |
 
-The optional `app` dependencies are Streamlit, pandas, and Plotly. CI installs the app and test dependencies, runs the tests, and checks both sample command workflows.
+The optional `app` dependencies include Streamlit, pandas, Plotly, NumPy, and scikit-learn. Use `.[analysis]` for command-line modelling without the interface. CI installs `.[dev,app]`, runs the tests, and checks both sample command workflows.
 
 ## Limits and next steps
 
-This is a local, single-user exploration app. It has no case queue, trained model, LLM integration, authentication, review persistence, or deployment. The PaySim loader supports one complete snapshot, not incremental updates, schema migrations, or row-level quarantine. Manually editing the database can invalidate its provenance; matching row counts do not detect arbitrary manual value changes.
+This is a local, single-user batch application. There is no live transaction feed, LLM integration, graph investigation, authentication, or hosted deployment. Review notes do not change source labels or automatically retrain the model. The PaySim loader supports one complete snapshot, not incremental updates, schema migrations, or row-level quarantine. Manually editing the database can invalidate its provenance.
 
-Next: document label availability and chronological evaluation boundaries, implement an initial feature set supported by the data, and compare a transparent rule baseline with logistic regression.
+Next: turn the existing account evidence into structured investigation findings, add defensible relationship features, and evaluate an LLM summary grounded in those findings. Keep detection performance and investigation quality measurable separately.

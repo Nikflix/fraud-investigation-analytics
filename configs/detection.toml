@@ -1,0 +1,11 @@
+# Whole simulation hours are kept together at each boundary.
+[detection]
+train_fraction = 0.70
+validation_fraction = 0.15
+# Select the threshold from validation scores, without using test labels.
+review_fraction = 0.01
+min_records = 1000
+
+[rules]
+large_amount_quantile = 0.995
+balance_share = 0.80

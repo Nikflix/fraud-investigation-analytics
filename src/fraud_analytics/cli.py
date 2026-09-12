@@ -44,7 +44,28 @@ def main() -> int:
     paysim.add_argument("--database", type=Path, default=Path("data/processed/paysim.duckdb"))
     profile = commands.add_parser("profile-paysim", help="Summarize a loaded PaySim snapshot")
     profile.add_argument("--database", type=Path, default=Path("data/processed/paysim.duckdb"))
+    analyze = commands.add_parser("analyze-paysim", help="Train a baseline and build a review queue")
+    analyze.add_argument("--database", type=Path, default=Path("data/processed/paysim.duckdb"))
+    analyze.add_argument("--config", type=Path, default=Path("configs/detection.toml"))
     args = parser.parse_args()
+
+    if args.command == "analyze-paysim":
+        configure_logging()
+        try:
+            from fraud_analytics.detection.pipeline import build_analysis, load_detection_config
+        except ImportError:
+            logger.error('Install scoring dependencies with: python -m pip install -e ".[analysis]"')
+            return 2
+        try:
+            result = build_analysis(args.database, load_detection_config(args.config))
+        except ValueError as error:
+            logger.error("Cannot build the review queue: %s", error)
+            return 1
+        except (OSError, duckdb.Error) as error:
+            logger.error("Analysis failed; check the database path and close other connections: %s", error)
+            return 2
+        print(json.dumps(result, indent=2))
+        return 0
 
     if args.command == "profile-paysim":
         configure_logging()

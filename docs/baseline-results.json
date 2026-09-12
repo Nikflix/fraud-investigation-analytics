@@ -1,0 +1,108 @@
+{
+  "recorded_date": "2026-09-12",
+  "run_id": "2c2d991f4fcbaeaef5dcc504ac736e2e51127e8d62e7d236a83516b90370369a",
+  "dataset_sha256": "16910f90577b0d981bf8ff289714510bb89bc71bff7d3f220f024e287e4eea6b",
+  "algorithm": "logistic-rules-v1",
+  "feature_version": 1,
+  "environment": {
+    "python": "3.12.14",
+    "duckdb": "1.5.5",
+    "numpy": "2.5.3",
+    "pandas": "3.0.5",
+    "scikit-learn": "1.9.1",
+    "streamlit": "1.63.0"
+  },
+  "fit_iterations": 14,
+  "config": {
+    "train_fraction": 0.7,
+    "validation_fraction": 0.15,
+    "review_fraction": 0.01,
+    "min_records": 1000,
+    "large_amount_quantile": 0.995,
+    "balance_share": 0.8
+  },
+  "model_alert_threshold": 0.014564149417366749,
+  "rules": {
+    "large_amount_threshold": 3354182.22,
+    "large_amount_quantile": 0.995,
+    "balance_share": 0.8
+  },
+  "metrics": {
+    "train_end": 323,
+    "validation_end": 378,
+    "last_step": 743,
+    "training": {
+      "records": 4463587,
+      "fraud_labels": 3643
+    },
+    "validation": {
+      "records": 980416,
+      "fraud_labels": 564,
+      "fraud_rate": 0.0005752660095306482,
+      "model": {
+        "alerts": 9804,
+        "alert_fraction": 0.009999836803968928,
+        "true_positives": 359,
+        "false_positives": 9445,
+        "false_negatives": 205,
+        "true_negatives": 970407,
+        "precision": 0.03661770705834353,
+        "recall": 0.6365248226950354,
+        "false_positive_rate": 0.009639210819593163,
+        "average_precision": 0.30124518028182085
+      },
+      "rules": {
+        "alerts": 193986,
+        "alert_fraction": 0.19786090802271689,
+        "true_positives": 564,
+        "false_positives": 193422,
+        "false_negatives": 0,
+        "true_negatives": 786430,
+        "precision": 0.0029074263091150906,
+        "recall": 1,
+        "false_positive_rate": 0.19739919906271558
+      }
+    },
+    "test": {
+      "records": 918617,
+      "fraud_labels": 4006,
+      "fraud_rate": 0.004360903401526425,
+      "model": {
+        "alerts": 11316,
+        "alert_fraction": 0.012318517945999257,
+        "true_positives": 2631,
+        "false_positives": 8685,
+        "false_negatives": 1375,
+        "true_negatives": 905926,
+        "precision": 0.23250265111346766,
+        "recall": 0.6567648527209187,
+        "false_positive_rate": 0.009495840308065396,
+        "average_precision": 0.5292369358964303
+      },
+      "rules": {
+        "alerts": 182750,
+        "alert_fraction": 0.19894036361182083,
+        "true_positives": 3992,
+        "false_positives": 178758,
+        "false_negatives": 14,
+        "true_negatives": 735853,
+        "precision": 0.02184404924760602,
+        "recall": 0.9965052421367948,
+        "false_positive_rate": 0.1954470261127408
+      }
+    }
+  },
+  "full_data_app_verification": {
+    "run_id": "2c2d991f4fcbaeaef5dcc504ac736e2e51127e8d62e7d236a83516b90370369a",
+    "scored_records": 918617,
+    "model_alerts": 11316,
+    "rule_alerts": 182750,
+    "queue_last_page_rows": 16,
+    "review_persistence": true,
+    "dataset_labels_unchanged": true,
+    "history_before_current_hour": true,
+    "new_input_changes_score": true,
+    "rerun_reuses_saved_model_and_preserves_review": true,
+    "method": "Streamlit AppTest on a disposable copy of the full scored database"
+  }
+}

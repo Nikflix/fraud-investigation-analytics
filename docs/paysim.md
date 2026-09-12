@@ -120,7 +120,7 @@ Zero-amount records are preserved, including their supplied labels. Applying the
 
 Validation, typed insertion, and metadata creation are one transaction. An invalid batch adds no rows. The same CSV fingerprint and stored record count yield a successful no-op on rerun. A different snapshot or inconsistent metadata is refused; choose a new database path to retain a separate copy.
 
-The fingerprint identifies the imported source bytes. It does not detect arbitrary manual edits to values inside an already loaded database. Keep the database read-only during analysis and retain the original CSV if source-level reconstruction is required.
+The fingerprint identifies the imported source bytes. It does not detect arbitrary manual edits to values inside an already loaded database. Leave imported transaction values unchanged and retain the original CSV for reconstruction. The scoring and review workflows write separate tables in the same database.
 
 ## Analysis limits
 
@@ -128,10 +128,12 @@ The fingerprint identifies the imported source bytes. It does not detect arbitra
 - **Sparse source history:** approximately 99.85% of source IDs appear once; the maximum is three records. A source-ID search is useful for inspection but cannot establish a rich sender behaviour baseline. Destination repetition needs separate analysis.
 - **Account roles:** source and destination preserve the supplied columns. Their meaning varies across transaction types; do not relabel every appearance as money sent or received, or infer verified account ownership.
 - **Labels:** `isFraud` is supplied synthetic ground truth. `isFlaggedFraud` is an existing flag from the source, not a prediction made by this project. Neither is analyst review feedback.
-- **Leakage:** review balance fields, flags, and other transaction outcomes against the intended scoring time before choosing features. Post-transaction balances may be unavailable at a pre-execution decision.
+- **Leakage:** the current baseline excludes labels, supplied flags, IDs, simulation hour, destination balances, and post-transaction balances from its inputs. It assumes the recorded source balance before execution is available. See the [model card](model-card.md) for label timing and evaluation assumptions.
 - **Balances:** merchant-related zero balance values must not be treated as verified observed account state. Balance reconciliation needs transaction-type-specific source assumptions.
 - **Generalization:** this simulation does not establish performance on real banking data. Label prevalence and rule behaviour in it must not be presented as real-world fraud rates.
 
 ## Test fixture
 
 `data/sample/paysim.csv` contains six hand-written fictional records. It exercises all five transaction types, a repeated source ID, scientific notation, zero amounts, and separate fraud-label and existing-flag values. Its three fraud labels out of six records are deliberately chosen test coverage, not representative sampling.
+
+The app identifies this fixture and disables training. Select the full database for the scoring and review workflow. Recorded model results are documented separately in the [model card](model-card.md).

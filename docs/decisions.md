@@ -4,7 +4,7 @@
 
 The foundation began before dataset selection. A thin CSV adapter and working validation boundary let us review the input contract before building features or committing to source-specific assumptions. PaySim is now selected, with a separate adapter and a documented contract.
 
-TOML is read with `tomllib`, sample amounts are checked with `Decimal`, and tests use `pytest`. DuckDB was added with the local ingestion command. Streamlit, pandas, and Plotly are optional application dependencies introduced with the overview; ML packages remain deferred.
+TOML is read with `tomllib`, sample amounts are checked with `Decimal`, and tests use `pytest`. DuckDB was added with local ingestion. Streamlit, pandas, and Plotly support the interface; NumPy and scikit-learn now support the baseline. Modelling dependencies remain optional for ingestion-only use.
 
 ## Use DuckDB for the local analytical store
 
@@ -24,13 +24,13 @@ The PaySim importer copies and hashes the same CSV bytes it scans. DuckDB stages
 
 One database contains one PaySim snapshot. Identical content is a successful no-op; another fingerprint is rejected rather than appended or overwritten. This suits a fixed exploratory dataset and keeps incremental-ingestion semantics out of this milestone. Metadata and row-count checks do not detect arbitrary manual database edits.
 
-The overview queries DuckDB directly with parameterized filters. It caches aggregates and bounded pages using database file metadata and keeps the full dataset out of pandas. Database writes should finish before opening the app. Multi-user state and concurrent writes will require a separate design.
+The overview queries DuckDB directly with parameterized filters. It caches aggregates and bounded pages using database file metadata and keeps the full dataset out of pandas during browsing. Training materializes narrow inputs one period at a time. The app supports its own training and review writes; stop it before CLI imports or training. Multi-user state and concurrent writes will require a separate design.
 
 ## Respect the measured data limits
 
 The [recorded PaySim profile](paysim.md) shows only 9,298 repeated source IDs among 6,353,307 distinct source IDs, with at most three source appearances each. The application therefore labels account searches as record appearances rather than inferred behavioural risk.
 
-Step values remain simulation hours. No calendar date or within-hour ordering is fabricated. Dataset labels and supplied existing-rule flags remain separate from any future predictions or analyst feedback. Balance fields need an availability and leakage review before feature engineering.
+Step values remain simulation hours. No calendar date or within-hour ordering is fabricated. Dataset labels and supplied existing-rule flags remain separate from predictions and analyst feedback. The baseline assumes the recorded source balance before the transaction is available at scoring time; destination and outcome balances are excluded.
 
 ## Preserve ambiguous input for review
 
@@ -50,7 +50,23 @@ Dataset review and the next modelling milestone should address:
 
 Use only lookback windows supported by the data's time resolution. Define how equal timestamps are handled before computing velocity or recipient novelty. Account and graph history must be cut off at the scoring time, including when they are used to explain an evaluation example.
 
-The first trained model should be a logistic regression baseline with chronological train, validation, and test periods. Fit preprocessing on the training partition. Select thresholds on validation data against an explicit review capacity. Keep the test period for final evaluation.
+## Use a small chronological baseline
+
+The first trained model is logistic regression with nine encoded features derived from three inputs. All training rows are retained, without class weighting or oversampling. Standardization and the large-amount percentile use only the training period.
+
+The default 70%/15%/15% row split keeps whole simulation hours together. The score threshold selects at most 1% of validation rows, using strict comparison to handle tied scores conservatively. Test labels affect evaluation only. A fixed threshold can produce a different alert volume later; the app reports that observed volume.
+
+Two separate rules flag outgoing transactions above the training 99.5th amount percentile or requesting at least 80% of a positive source balance. Their union is evaluated independently of the model. Integer-cent comparisons avoid binary floating-point errors at rule boundaries.
+
+The [model card](model-card.md) documents the actual results, label timing assumptions, and prevalence shift. The initial analysis follows aggregate dataset inspection, so this is an exploratory baseline, not an untouched external benchmark. No hyperparameter search was performed against the test period.
+
+## Save reproducible scores and separate reviews
+
+Model coefficients, standardization parameters, rule settings, configuration, and metrics are JSON values in DuckDB; inference does not deserialize executable pickle files. An analysis identity includes the source fingerprint and feature/algorithm versions. Dependency versions are recorded for interpretation, but are not a lockfile or a guarantee of bitwise identical retraining.
+
+Reviews refer to the CSV fingerprint and source row. Each save updates the current status and appends an event in one transaction. Repeating an analysis preserves those reviews. Review statuses describe workflow progress; closing a case does not establish a verified fraud label.
+
+The queue scores the final evaluation period only, keeping training examples out of the measured review workflow. Case history includes strictly earlier hours, with at most 20 records. The new-transaction form calculates fresh results from entered values without modifying the source snapshot.
 
 ## Repository scope
 
